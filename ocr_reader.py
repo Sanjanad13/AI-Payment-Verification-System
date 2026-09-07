@@ -2,8 +2,6 @@ import pytesseract
 from PIL import Image
 import re
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-# IMPORTANT: If you are on Windows, uncomment the line below and add your Tesseract path
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 def extract_receipt_data(image_path):
     # 1. Read all text from the image
