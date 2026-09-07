@@ -24,8 +24,6 @@ async def root():
         </body>
     </html>
     """
-# --- DATABASE SETUP ---
-# This creates a real database file called "store.db" on your computer
 def setup_database():
     conn = sqlite3.connect("store.db")
     cursor = conn.cursor()
@@ -39,14 +37,12 @@ def setup_database():
         )
     ''')
     
-    # Create a table for used Transaction IDs to prevent duplicate receipts
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS used_transactions (
             transaction_id TEXT PRIMARY KEY
         )
     ''')
     
-    # Insert a dummy order so we have something to test against
     cursor.execute('''
         INSERT OR IGNORE INTO orders (order_id, expected_amount, status) 
         VALUES ('ORD-100', 105000.00, 'awaiting_payment')
@@ -55,47 +51,36 @@ def setup_database():
     conn.commit()
     conn.close()
 
-# Run the setup function when the code starts
 setup_database()
 
-# --- API ENDPOINT ---
 @app.post("/verify-payment/{order_id}")
 async def verify_payment(order_id: str, file: UploadFile = File(...)):
-    # 1. Save uploaded file temporarily
     file_location = f"temp_{file.filename}"
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # 2. Run Image Forensics
     fraud_check = analyze_tampering(file_location)
     
-    # 3. Run OCR Data Extraction
     receipt_data = extract_receipt_data(file_location)
     
-    # Cleanup saved image
     os.remove(file_location)
     
-    # 4. Connect to the Real Database
     conn = sqlite3.connect("store.db")
     cursor = conn.cursor()
     
     reasons = []
     
-    # Check for Photoshop/Tampering
     if fraud_check["is_tampered"]:
         reasons.append(f"Image tampering detected (Score: {fraud_check['tamper_score']})")
         
-    # Check Transaction ID rules
     extracted_tx_id = receipt_data["transaction_id"]
     if not extracted_tx_id:
         reasons.append("Could not find a valid Transaction ID on receipt.")
     else:
-        # Ask the database if this ID has been used before
         cursor.execute("SELECT * FROM used_transactions WHERE transaction_id = ?", (extracted_tx_id,))
         if cursor.fetchone():
             reasons.append(f"Duplicate receipt! ID {extracted_tx_id} was already used.")
             
-    # Check Order Amount rules
     cursor.execute("SELECT expected_amount FROM orders WHERE order_id = ?", (order_id,))
     order_record = cursor.fetchone()
     
@@ -106,7 +91,6 @@ async def verify_payment(order_id: str, file: UploadFile = File(...)):
     else:
         reasons.append("Invalid Order ID.")
         
-    # 5. The Verdict & Saving Data
     if len(reasons) == 0:
         # If approved, save this new transaction ID to the database so it can't be reused!
         cursor.execute("INSERT INTO used_transactions (transaction_id) VALUES (?)", (extracted_tx_id,))
